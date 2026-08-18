@@ -6,48 +6,84 @@ const redis = new Redis({
   token: process.env.UPSTASH_REDIS_REST_TOKEN!,
 });
 
+const SEVEN_MINUTES = 7 * 60 * 1000;
+const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
+
+type Message = {
+  id: string;
+  phone: string;
+  message: string;
+  createdAt: number;
+  status: string;
+  deliveredAt?: number;
+};
+
 export async function GET() {
   try {
-    // أخذ رسالة من قائمة الانتظار
-    const id = await redis.rpop<string>("messages:pending");
+    while (true) {
+      const id = await redis.rpop<string>("messages:pending");
 
-    if (!id) {
+      if (!id) {
+        return NextResponse.json({
+          success: true,
+          message: null,
+        });
+      }
+
+      const message = await redis.get<Message>(
+        `message:${id}`,
+      );
+
+      // الرسالة غير موجودة
+      if (!message) {
+        continue;
+      }
+
+      const age = Date.now() - message.createdAt;
+
+      // تجاوزت 24 ساعة
+      if (age >= TWENTY_FOUR_HOURS) {
+        await redis.del(`message:${id}`);
+        continue;
+      }
+
+      // تجاوزت 7 دقائق بدون سحب
+      if (
+        message.status === "pending" &&
+        age >= SEVEN_MINUTES
+      ) {
+        await redis.del(`message:${id}`);
+        continue;
+      }
+
+      // تسليم الرسالة
+      const updatedMessage: Message = {
+        ...message,
+        status: "delivered",
+        deliveredAt: Date.now(),
+      };
+
+      // تبقى حتى إكمال 24 ساعة من وقت وصولها
+      const remainingSeconds = Math.max(
+        1,
+        Math.ceil(
+          (TWENTY_FOUR_HOURS - age) / 1000,
+        ),
+      );
+
+      await redis.set(
+        `message:${id}`,
+        updatedMessage,
+        {
+          ex: remainingSeconds,
+        },
+      );
+
       return NextResponse.json({
         success: true,
-        message: null,
+        message: updatedMessage,
       });
     }
-
-    // جلب بيانات الرسالة
-    const message = await redis.get<{
-      id: string;
-      phone: string;
-      message: string;
-      createdAt: number;
-      status: string;
-    }>(`message:${id}`);
-
-    if (!message) {
-      return NextResponse.json({
-        success: true,
-        message: null,
-      });
-    }
-
-    // تغيير حالة الرسالة بدل حذفها
-    const updatedMessage = {
-      ...message,
-      status: "delivered",
-      deliveredAt: Date.now(),
-    };
-
-    await redis.set(`message:${id}`, updatedMessage);
-
-    return NextResponse.json({
-      success: true,
-      message: updatedMessage,
-    });
-
   } catch (error) {
     console.error("PENDING ERROR:", error);
 

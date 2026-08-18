@@ -15,33 +15,61 @@ type Message = {
   deliveredAt?: number;
 };
 
+const SEVEN_MINUTES = 7 * 60 * 1000;
+const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
+
 export async function GET() {
   try {
-    // جلب آخر 100 ID من السجل
     const ids = await redis.lrange<string[]>(
       "messages:history",
       0,
-      99
+      99,
     );
 
-    // جلب بيانات كل رسالة
-    const messages = await Promise.all(
-      ids.map(async (id) => {
-        return await redis.get<Message>(`message:${id}`);
-      })
-    );
+    const now = Date.now();
+    const validMessages: Message[] = [];
 
-    // إزالة أي رسائل غير موجودة
-    const validMessages = messages.filter(
-      (message): message is Message => message !== null
-    );
+    for (const id of ids) {
+      const message = await redis.get<Message>(
+        `message:${id}`,
+      );
+
+      // الرسالة غير موجودة في Redis
+      if (!message) {
+        continue;
+      }
+
+      const age = now - message.createdAt;
+
+      // حذف بعد 24 ساعة
+      if (age >= TWENTY_FOUR_HOURS) {
+        await redis.del(`message:${id}`);
+        continue;
+      }
+
+      // pending أكثر من 7 دقائق
+      if (
+        message.status === "pending" &&
+        age >= SEVEN_MINUTES
+      ) {
+        await redis.del(`message:${id}`);
+        await redis.lrem(
+          "messages:pending",
+          0,
+          id,
+        );
+        continue;
+      }
+
+      validMessages.push(message);
+    }
 
     const pending = validMessages.filter(
-      (message) => message.status === "pending"
+      (message) => message.status === "pending",
     ).length;
 
     const delivered = validMessages.filter(
-      (message) => message.status === "delivered"
+      (message) => message.status === "delivered",
     ).length;
 
     return NextResponse.json({
@@ -55,7 +83,6 @@ export async function GET() {
 
       messages: validMessages,
     });
-
   } catch (error) {
     console.error("HISTORY ERROR:", error);
 
@@ -64,7 +91,7 @@ export async function GET() {
         success: false,
         error: "Internal server error",
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

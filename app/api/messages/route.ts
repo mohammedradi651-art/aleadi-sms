@@ -23,22 +23,26 @@ export async function POST(request: Request) {
     }
 
     const id = crypto.randomUUID();
+    const now = Date.now();
 
     const data = {
       id,
       phone: String(phone),
       message: String(message),
-      createdAt: Date.now(),
+      createdAt: now,
       status: "pending",
     };
 
-    // حفظ بيانات الرسالة
-    await redis.set(`message:${id}`, data);
+    // حفظ الرسالة
+    // تنتهي تلقائياً بعد 24 ساعة
+    await redis.set(`message:${id}`, data, {
+      ex: 60 * 60 * 24,
+    });
 
-    // إضافتها إلى قائمة انتظار القارئ
+    // قائمة انتظار القارئ
     await redis.lpush("messages:pending", id);
 
-    // إضافتها إلى سجل الرسائل للواجهة
+    // سجل الرسائل
     await redis.lpush("messages:history", id);
 
     // الاحتفاظ بآخر 100 رسالة فقط

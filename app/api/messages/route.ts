@@ -6,8 +6,31 @@ const redis = new Redis({
   token: process.env.UPSTASH_REDIS_REST_TOKEN!,
 });
 
+// مفتاح API المسموح للمرسل
+const API_KEY = "ALWADI-OTP-771176611";
+
 export async function POST(request: Request) {
   try {
+    // =====================================================
+    // حماية الإرسال فقط
+    // =====================================================
+
+    const apiKey = request.headers.get("x-api-key");
+
+    if (apiKey !== API_KEY) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Unauthorized",
+        },
+        { status: 401 },
+      );
+    }
+
+    // =====================================================
+    // قراءة الطلب
+    // =====================================================
+
     const body = await request.json();
 
     const { phone, message } = body;
@@ -22,6 +45,10 @@ export async function POST(request: Request) {
       );
     }
 
+    // =====================================================
+    // إنشاء الرسالة
+    // =====================================================
+
     const id = crypto.randomUUID();
     const now = Date.now();
 
@@ -33,20 +60,31 @@ export async function POST(request: Request) {
       status: "pending",
     };
 
-    // حفظ الرسالة
-    // تنتهي تلقائياً بعد 24 ساعة
+    // =====================================================
+    // حفظ الرسالة لمدة 24 ساعة
+    // =====================================================
+
     await redis.set(`message:${id}`, data, {
       ex: 60 * 60 * 24,
     });
 
+    // =====================================================
     // قائمة انتظار القارئ
+    // =====================================================
+
     await redis.lpush("messages:pending", id);
 
-    // سجل الرسائل
+    // =====================================================
+    // سجل الرسائل للوحة التحكم
+    // =====================================================
+
     await redis.lpush("messages:history", id);
 
-    // الاحتفاظ بآخر 100 رسالة فقط
     await redis.ltrim("messages:history", 0, 99);
+
+    // =====================================================
+    // نجاح
+    // =====================================================
 
     return NextResponse.json({
       success: true,

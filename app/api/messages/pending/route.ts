@@ -1,13 +1,8 @@
-import { Redis } from "@upstash/redis";
+import { getDb } from "@/lib/firebase-admin";
 import { NextResponse } from "next/server";
 
-const redis = new Redis({
-  url: process.env.UPSTASH_REDIS_REST_URL!,
-  token: process.env.UPSTASH_REDIS_REST_TOKEN!,
-});
-
+const ONE_MONTH_MS = 30 * 24 * 60 * 60 * 1000;
 const SEVEN_MINUTES = 7 * 60 * 1000;
-const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
 
 type Message = {
   id: string;
@@ -20,70 +15,75 @@ type Message = {
 
 export async function GET() {
   try {
-    while (true) {
-      const id = await redis.rpop<string>("messages:pending");
+    const db = getDb();
+    const now = Date.now();
 
-      if (!id) {
-        return NextResponse.json({
-          success: true,
-          message: null,
-        });
-      }
+    // =====================================================
+    // جلب أقدم رسالة pending
+    // =====================================================
 
-      const message = await redis.get<Message>(
-        `message:${id}`,
-      );
+    const snapshot = await db
+      .collection("messages")
+      .where("status", "==", "pending")
+      .orderBy("createdAt", "asc")
+      .limit(10)
+      .get();
 
-      // الرسالة غير موجودة
-      if (!message) {
+    if (snapshot.empty) {
+      return NextResponse.json({
+        success: true,
+        message: null,
+      });
+    }
+
+    // البحث عن رسالة صالحة (لم تنتهِ مدتها)
+    for (const doc of snapshot.docs) {
+      const data = doc.data();
+      const age = now - data.createdAt;
+
+      // حذف الرسائل القديمة جداً (أكثر من شهر)
+      if (age >= ONE_MONTH_MS) {
+        await doc.ref.delete();
         continue;
       }
 
-      const age = Date.now() - message.createdAt;
-
-      // تجاوزت 24 ساعة
-      if (age >= TWENTY_FOUR_HOURS) {
-        await redis.del(`message:${id}`);
+      // تجاهل الرسائل التي انتظرت أكثر من 7 دقائق دون سحب
+      if (data.status === "pending" && age >= SEVEN_MINUTES) {
+        await doc.ref.delete();
         continue;
       }
 
-      // تجاوزت 7 دقائق بدون سحب
-      if (
-        message.status === "pending" &&
-        age >= SEVEN_MINUTES
-      ) {
-        await redis.del(`message:${id}`);
-        continue;
-      }
+      // =====================================================
+      // تسليم الرسالة وتحديث حالتها
+      // =====================================================
 
-      // تسليم الرسالة
-      const updatedMessage: Message = {
-        ...message,
+      const deliveredAt = now;
+
+      await doc.ref.update({
         status: "delivered",
-        deliveredAt: Date.now(),
+        deliveredAt,
+      });
+
+      const message: Message = {
+        id: doc.id,
+        phone: data.phone,
+        message: data.message,
+        createdAt: data.createdAt,
+        status: "delivered",
+        deliveredAt,
       };
-
-      // تبقى حتى إكمال 24 ساعة من وقت وصولها
-      const remainingSeconds = Math.max(
-        1,
-        Math.ceil(
-          (TWENTY_FOUR_HOURS - age) / 1000,
-        ),
-      );
-
-      await redis.set(
-        `message:${id}`,
-        updatedMessage,
-        {
-          ex: remainingSeconds,
-        },
-      );
 
       return NextResponse.json({
         success: true,
-        message: updatedMessage,
+        message,
       });
     }
+
+    // لا توجد رسائل صالحة
+    return NextResponse.json({
+      success: true,
+      message: null,
+    });
   } catch (error) {
     console.error("PENDING ERROR:", error);
 

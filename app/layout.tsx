@@ -1,16 +1,10 @@
 import type { Metadata } from "next";
-import { Tajawal } from "next/font/google";
 import "./globals.css";
 
-const tajawal = Tajawal({
-  subsets: ["arabic"],
-  weight: ["400", "500", "700", "800"],
-  display: "swap",
-});
-
 export const metadata: Metadata = {
-  title: "OTP منظومة الوادي",
-  description: "نظام استقبال وإدارة رموز التحقق",
+  title: "منظومة الوادي SMS — لوحة التحكم",
+  description: "نظام استقبال وإدارة رسائل SMS ورموز التحقق — منظومة الوادي",
+  keywords: "SMS, OTP, رموز تحقق, منظومة الوادي",
 };
 
 export default function RootLayout({
@@ -20,7 +14,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="ar" dir="rtl">
-      <body className={tajawal.className}>{children}</body>
+      <body>{children}</body>
     </html>
   );
 }

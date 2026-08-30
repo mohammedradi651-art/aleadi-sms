@@ -1,13 +1,11 @@
-import { Redis } from "@upstash/redis";
+import { getDb } from "@/lib/firebase-admin";
 import { NextResponse } from "next/server";
-
-const redis = new Redis({
-  url: process.env.UPSTASH_REDIS_REST_URL!,
-  token: process.env.UPSTASH_REDIS_REST_TOKEN!,
-});
 
 // مفتاح API المسموح للمرسل
 const API_KEY = "ALWADI-OTP-771176611";
+
+// مدة الحفظ: شهر كامل
+const ONE_MONTH_MS = 30 * 24 * 60 * 60 * 1000;
 
 export async function POST(request: Request) {
   try {
@@ -46,41 +44,29 @@ export async function POST(request: Request) {
     }
 
     // =====================================================
-    // إنشاء الرسالة
+    // إنشاء الرسالة في Firestore
     // =====================================================
 
-    const id = crypto.randomUUID();
+    const db = getDb();
     const now = Date.now();
+    const expiresAt = now + ONE_MONTH_MS;
+
+    const docRef = await db.collection("messages").add({
+      phone: String(phone),
+      message: String(message),
+      createdAt: now,
+      expiresAt,
+      status: "pending",
+      deliveredAt: null,
+    });
 
     const data = {
-      id,
+      id: docRef.id,
       phone: String(phone),
       message: String(message),
       createdAt: now,
       status: "pending",
     };
-
-    // =====================================================
-    // حفظ الرسالة لمدة 24 ساعة
-    // =====================================================
-
-    await redis.set(`message:${id}`, data, {
-      ex: 60 * 60 * 24,
-    });
-
-    // =====================================================
-    // قائمة انتظار القارئ
-    // =====================================================
-
-    await redis.lpush("messages:pending", id);
-
-    // =====================================================
-    // سجل الرسائل للوحة التحكم
-    // =====================================================
-
-    await redis.lpush("messages:history", id);
-
-    await redis.ltrim("messages:history", 0, 99);
 
     // =====================================================
     // نجاح

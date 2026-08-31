@@ -457,7 +457,7 @@ export default function Home() {
     dateLabel: new Date(d.date).toLocaleDateString("ar-SA", { weekday: "short", day: "numeric" }),
   }));
 
-  const stats = data?.stats ?? { total: 0, pending: 0, delivered: 0, successRate: 0 };
+  const stats = data?.stats ?? { total: 0, pending: 0, delivered: 0, failed: 0, successRate: 0 };
 
   return (
     <div className="app-container" style={{ maxWidth: "1240px", margin: "0 auto", padding: "28px 20px 80px" }}>

@@ -1067,9 +1067,22 @@ export default function Home() {
                           انتظار
                         </span>
                       )}
-                      <div className="num-latin" style={{ fontSize: "0.75rem", color: "var(--text-muted)", fontWeight: 600 }}>
-                        {formatFullTime(msg.createdAt)} • {formatRelative(msg.createdAt)}
-                      </div>
+                      {msg.status === "delivered" ? (
+                        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "2px", marginTop: "2px" }}>
+                          <div className="num-latin" style={{ fontSize: "0.75rem", color: "var(--success-text)", fontWeight: 600 }}>
+                            استلام: {formatFullTime(msg.createdAt)} • {formatRelative(msg.createdAt)}
+                          </div>
+                          {msg.deliveredAt && (
+                            <div className="num-latin" style={{ fontSize: "0.75rem", color: "#3b82f6", fontWeight: 600 }}>
+                              إرسال: {formatFullTime(msg.deliveredAt)} • {formatRelative(msg.deliveredAt)}
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="num-latin" style={{ fontSize: "0.75rem", color: "var(--text-muted)", fontWeight: 600 }}>
+                          {formatFullTime(msg.createdAt)} • {formatRelative(msg.createdAt)}
+                        </div>
+                      )}
                     </div>
 
                     <button

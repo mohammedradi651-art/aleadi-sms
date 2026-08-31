@@ -19,6 +19,16 @@ export async function GET() {
     const now = Date.now();
 
     // =====================================================
+    // تسجيل نبض القارئ
+    // =====================================================
+    
+    // استخدام تحديث غير متزامن وعدم انتظار النتيجة لتسريع الاستجابة للقارئ
+    db.collection("system").doc("main-reader").set({
+      lastSeen: now,
+      updatedAt: new Date().toISOString()
+    }, { merge: true }).catch(console.error);
+
+    // =====================================================
     // جلب أقدم رسالة pending
     // =====================================================
 
@@ -47,9 +57,9 @@ export async function GET() {
         continue;
       }
 
-      // تجاهل الرسائل التي انتظرت أكثر من 7 دقائق دون سحب
+      // تحويل الرسائل التي انتظرت أكثر من 7 دقائق دون سحب إلى فاشلة
       if (data.status === "pending" && age >= SEVEN_MINUTES) {
-        await doc.ref.delete();
+        await doc.ref.update({ status: "failed" });
         continue;
       }
 

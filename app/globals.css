@@ -251,6 +251,12 @@ body {
   color: var(--primary);
 }
 
+.badge-failed {
+  background: var(--danger-light);
+  color: var(--danger-text);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+}
+
 /* Inputs */
 .input-fintech {
   width: 100%;

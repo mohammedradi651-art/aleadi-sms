@@ -40,7 +40,7 @@ type Message = {
   phone: string;
   message: string;
   createdAt: number;
-  status: "pending" | "delivered";
+  status: "pending" | "delivered" | "failed";
   deliveredAt?: number;
 };
 
@@ -49,6 +49,7 @@ type ChartDay = {
   total: number;
   delivered: number;
   pending: number;
+  failed: number;
 };
 
 type HistoryResponse = {
@@ -57,8 +58,10 @@ type HistoryResponse = {
     total: number;
     pending: number;
     delivered: number;
+    failed: number;
     successRate: number;
   };
+  readerLastSeen: number | null;
   chartData: ChartDay[];
   messages: Message[];
 };
@@ -267,7 +270,7 @@ export default function Home() {
   const [data, setData] = useState<HistoryResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"all" | "pending" | "delivered">("all");
+  const [statusFilter, setStatusFilter] = useState<"all" | "pending" | "delivered" | "failed">("all");
   const [copiedApi, setCopiedApi] = useState(false);
   const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -326,7 +329,8 @@ export default function Home() {
     const all = data?.messages?.length ?? 0;
     const pending = data?.messages?.filter((m) => m.status === "pending").length ?? 0;
     const delivered = data?.messages?.filter((m) => m.status === "delivered").length ?? 0;
-    return { all, pending, delivered };
+    const failed = data?.messages?.filter((m) => m.status === "failed").length ?? 0;
+    return { all, pending, delivered, failed };
   }, [data]);
 
   /* Copy API Key */
@@ -495,28 +499,36 @@ export default function Home() {
               <h1 style={{ fontSize: "1.35rem", fontWeight: 800, color: "var(--text-main)", letterSpacing: "-0.02em" }}>
                  ALWADI SMS
               </h1>
-              <div
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: "5px",
-                  padding: "3px 8px",
-                  borderRadius: "var(--radius-full)",
-                  background: "var(--success-light)",
-                  color: "var(--success-text)",
-                  fontSize: "0.72rem",
-                  fontWeight: 700,
-                }}
-              >
-                <span
-                  className="live-pulse"
-                  style={{ width: "6px", height: "6px", borderRadius: "50%", background: "var(--success)" }}
-                />
-                متصل
-              </div>
+              {data && (
+                <div
+                  title={data.readerLastSeen ? `آخر اتصال: ${formatFullTime(data.readerLastSeen)}` : "لم يتصل بعد"}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "5px",
+                    padding: "3px 8px",
+                    borderRadius: "var(--radius-full)",
+                    background: (data.readerLastSeen && (Date.now() - data.readerLastSeen <= 10000)) ? "var(--success-light)" : "var(--danger-light)",
+                    color: (data.readerLastSeen && (Date.now() - data.readerLastSeen <= 10000)) ? "var(--success-text)" : "var(--danger-text)",
+                    fontSize: "0.72rem",
+                    fontWeight: 700,
+                  }}
+                >
+                  <span
+                    className={(data.readerLastSeen && (Date.now() - data.readerLastSeen <= 10000)) ? "live-pulse" : ""}
+                    style={{ width: "6px", height: "6px", borderRadius: "50%", background: (data.readerLastSeen && (Date.now() - data.readerLastSeen <= 10000)) ? "var(--success)" : "var(--danger)" }}
+                  />
+                  {(data.readerLastSeen && (Date.now() - data.readerLastSeen <= 10000)) ? "متصل" : "غير متصل"}
+                </div>
+              )}
             </div>
             <p style={{ color: "var(--text-sub)", fontSize: "0.82rem", fontWeight: 500, marginTop: "2px" }}>
               نظام رسائل التحقق 
+              {data?.readerLastSeen ? (
+                <span style={{ margin: "0 5px", color: "var(--text-muted)" }}>
+                  | آخر اتصال: {formatRelative(data.readerLastSeen)}
+                </span>
+              ) : null}
             </p>
           </div>
         </div>
@@ -632,7 +644,7 @@ export default function Home() {
         className="stats-grid"
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(4, 1fr)",
+          gridTemplateColumns: "repeat(5, 1fr)",
           gap: "18px",
           marginBottom: "28px",
         }}
@@ -701,6 +713,22 @@ export default function Home() {
             <span>كفاءة تسليم ممتازة</span>
           </div>
         </div>
+
+        {/* Card 5: Failed */}
+        <div className="app-card app-card-interactive stat-card-inner" style={{ padding: "22px" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "14px" }}>
+            <span style={{ fontSize: "0.88rem", fontWeight: 600, color: "var(--text-sub)" }}>فاشلة</span>
+            <div style={{ width: "40px", height: "40px", borderRadius: "12px", background: "var(--danger-light)", color: "var(--danger-text)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <X size={20} />
+            </div>
+          </div>
+          <div className="num-latin stat-val" style={{ fontSize: "1.9rem", fontWeight: 800, color: "var(--danger-text)", lineHeight: 1 }}>
+            {loading ? "—" : stats.failed}
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: "4px", color: "var(--text-muted)", fontSize: "0.78rem", marginTop: "8px", fontWeight: 500 }}>
+            <span>تجاوزت وقت الانتظار</span>
+          </div>
+        </div>
       </div>
 
       {/* ─── ACTIVITY CHART ─── */}
@@ -723,6 +751,10 @@ export default function Home() {
               <span style={{ width: "10px", height: "10px", borderRadius: "50%", background: "var(--warning)" }} />
               <span>قيد الانتظار</span>
             </div>
+            <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+              <span style={{ width: "10px", height: "10px", borderRadius: "50%", background: "var(--danger)" }} />
+              <span>فاشلة</span>
+            </div>
           </div>
         </div>
 
@@ -737,6 +769,10 @@ export default function Home() {
                 <linearGradient id="warningGrad" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.2} />
                   <stop offset="95%" stopColor="#f59e0b" stopOpacity={0} />
+                </linearGradient>
+                <linearGradient id="dangerGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#ef4444" stopOpacity={0.2} />
+                  <stop offset="95%" stopColor="#ef4444" stopOpacity={0} />
                 </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
@@ -785,6 +821,16 @@ export default function Home() {
                 fill="url(#warningGrad)"
                 activeDot={{ r: 6, stroke: "#ffffff", strokeWidth: 2, fill: "#f59e0b" }}
               />
+              <Area
+                type="monotone"
+                dataKey="failed"
+                name="فاشلة"
+                stroke="#ef4444"
+                strokeWidth={3}
+                fillOpacity={1}
+                fill="url(#dangerGrad)"
+                activeDot={{ r: 6, stroke: "#ffffff", strokeWidth: 2, fill: "#ef4444" }}
+              />
             </AreaChart>
           </ResponsiveContainer>
         </div>
@@ -823,9 +869,9 @@ export default function Home() {
               gap: "4px",
             }}
           >
-            {(["all", "pending", "delivered"] as const).map((f) => {
+            {(["all", "pending", "delivered", "failed"] as const).map((f) => {
               const active = statusFilter === f;
-              const count = f === "all" ? counts.all : f === "pending" ? counts.pending : counts.delivered;
+              const count = f === "all" ? counts.all : f === "pending" ? counts.pending : f === "delivered" ? counts.delivered : counts.failed;
               return (
                 <button
                   key={f}
@@ -838,7 +884,7 @@ export default function Home() {
                     borderRadius: "12px",
                     border: "none",
                     background: active ? "var(--surface)" : "transparent",
-                    color: active ? "var(--primary)" : "var(--text-sub)",
+                    color: active ? (f === "failed" ? "var(--danger)" : "var(--primary)") : "var(--text-sub)",
                     fontSize: "0.85rem",
                     fontWeight: active ? 700 : 500,
                     fontFamily: "inherit",
@@ -847,12 +893,12 @@ export default function Home() {
                     transition: "all 0.2s ease",
                   }}
                 >
-                  <span>{f === "all" ? "الكل" : f === "pending" ? "في الانتظار" : "المُسلّمة"}</span>
+                  <span>{f === "all" ? "الكل" : f === "pending" ? "في الانتظار" : f === "delivered" ? "المُسلّمة" : "فاشلة"}</span>
                   <span
                     className="num-latin"
                     style={{
-                      background: active ? "var(--primary-light)" : "rgba(0,0,0,0.06)",
-                      color: active ? "var(--primary)" : "var(--text-muted)",
+                      background: active ? (f === "failed" ? "var(--danger-light)" : "var(--primary-light)") : "rgba(0,0,0,0.06)",
+                      color: active ? (f === "failed" ? "var(--danger)" : "var(--primary)") : "var(--text-muted)",
                       padding: "2px 7px",
                       borderRadius: "var(--radius-full)",
                       fontSize: "0.72rem",
@@ -952,8 +998,8 @@ export default function Home() {
                         width: "44px",
                         height: "44px",
                         borderRadius: "14px",
-                        background: msg.status === "delivered" ? "var(--success-light)" : "var(--warning-light)",
-                        color: msg.status === "delivered" ? "var(--success-text)" : "var(--warning-text)",
+                        background: msg.status === "delivered" ? "var(--success-light)" : msg.status === "failed" ? "var(--danger-light)" : "var(--warning-light)",
+                        color: msg.status === "delivered" ? "var(--success-text)" : msg.status === "failed" ? "var(--danger-text)" : "var(--warning-text)",
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
@@ -961,7 +1007,7 @@ export default function Home() {
                         marginTop: "2px",
                       }}
                     >
-                      {msg.status === "delivered" ? <CheckCircle2 size={22} /> : <Clock size={22} />}
+                      {msg.status === "delivered" ? <CheckCircle2 size={22} /> : msg.status === "failed" ? <X size={22} /> : <Clock size={22} />}
                     </div>
 
                     <div style={{ flex: 1 }}>
@@ -1009,6 +1055,11 @@ export default function Home() {
                         <span className="badge-fintech badge-delivered">
                           <CheckCircle2 size={12} />
                           مُسلّمة
+                        </span>
+                      ) : msg.status === "failed" ? (
+                        <span className="badge-fintech badge-failed">
+                          <X size={12} />
+                          فاشلة
                         </span>
                       ) : (
                         <span className="badge-fintech badge-pending">

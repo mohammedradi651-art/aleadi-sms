@@ -1,7 +1,10 @@
 import { getDb } from "@/lib/firebase-admin";
+import { serverState, getReaderLastSeen } from "@/lib/server-state";
 import { NextResponse } from "next/server";
 
 const ONE_MONTH_MS = 30 * 24 * 60 * 60 * 1000;
+const HISTORY_CACHE_TTL = 10 * 1000; // 10 ثوان كاش للوحة التحكم
+const CLEANUP_INTERVAL = 6 * 60 * 60 * 1000; // تنظيف كل 6 ساعات فقط
 
 type Message = {
   id: string;
@@ -14,32 +17,57 @@ type Message = {
 
 export async function GET() {
   try {
-    const db = getDb();
     const now = Date.now();
+    let readerLastSeen = getReaderLastSeen();
+
+    // =====================================================
+    // 1. التحقق من الكاش (إذا كان صالحاً نرجعه فوراً مع تحديث حالة القارئ)
+    // =====================================================
+    if (
+      serverState.historyCache &&
+      now - serverState.historyCache.timestamp < HISTORY_CACHE_TTL
+    ) {
+      return NextResponse.json({
+        ...serverState.historyCache.data,
+        readerLastSeen,
+      });
+    }
+
+    const db = getDb();
     const oneMonthAgo = now - ONE_MONTH_MS;
 
     // =====================================================
-    // تنظيف الرسائل القديمة (أكثر من شهر)
+    // 2. تنظيف الرسائل القديمة (مرة كل 6 ساعات فقط لتوفير العمليات)
     // =====================================================
-
-    const expiredSnapshot = await db
-      .collection("messages")
-      .where("createdAt", "<", oneMonthAgo)
-      .limit(50)
-      .get();
-
-    if (!expiredSnapshot.empty) {
-      const batch = db.batch();
-      expiredSnapshot.docs.forEach((doc) => batch.delete(doc.ref));
-      await batch.commit();
+    if (now - serverState.lastCleanupTime > CLEANUP_INTERVAL) {
+      serverState.lastCleanupTime = now;
+      db.collection("messages")
+        .where("createdAt", "<", oneMonthAgo)
+        .limit(50)
+        .get()
+        .then((expiredSnapshot) => {
+          if (!expiredSnapshot.empty) {
+            const batch = db.batch();
+            expiredSnapshot.docs.forEach((doc) => batch.delete(doc.ref));
+            return batch.commit();
+          }
+        })
+        .catch(console.error);
     }
 
     // =====================================================
-    // جلب حالة القارئ
+    // 3. جلب حالة القارئ الدائمة إذا لم تكن في الذاكرة
     // =====================================================
-    
-    const readerDoc = await db.collection("system").doc("main-reader").get();
-    const readerLastSeen = readerDoc.exists ? readerDoc.data()?.lastSeen : null;
+    if (!readerLastSeen) {
+      try {
+        const readerDoc = await db.collection("system").doc("main-reader").get();
+        if (readerDoc.exists) {
+          readerLastSeen = readerDoc.data()?.lastSeen ?? null;
+        }
+      } catch (e) {
+        console.error("Reader doc get error:", e);
+      }
+    }
 
     // =====================================================
     // جلب آخر 100 رسالة للعرض
@@ -112,7 +140,7 @@ export async function GET() {
       ...stats,
     }));
 
-    return NextResponse.json({
+    const responsePayload = {
       success: true,
       stats: {
         total: messages.length,
@@ -127,7 +155,15 @@ export async function GET() {
       readerLastSeen,
       chartData,
       messages,
-    });
+    };
+
+    // حفظ في الكاش
+    serverState.historyCache = {
+      data: responsePayload,
+      timestamp: now,
+    };
+
+    return NextResponse.json(responsePayload);
   } catch (error) {
     console.error("HISTORY ERROR:", error);
 

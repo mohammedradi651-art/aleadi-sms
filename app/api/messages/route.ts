@@ -1,4 +1,5 @@
 import { getDb } from "@/lib/firebase-admin";
+import { notifyNewMessage } from "@/lib/server-state";
 import { NextResponse } from "next/server";
 
 // مفتاح API المسموح للمرسل
@@ -67,6 +68,9 @@ export async function POST(request: Request) {
       createdAt: now,
       status: "pending",
     };
+
+    // إشعار الذاكرة المؤقتة بوجود رسالة جديدة
+    notifyNewMessage();
 
     // =====================================================
     // نجاح

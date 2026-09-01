@@ -303,12 +303,29 @@ export default function Home() {
     }
   }, []);
 
-  /* Auto-refresh every 5 seconds */
+  /* Auto-refresh: 15 seconds, and only when tab is active */
   useEffect(() => {
     if (!loggedIn) return;
     loadMessages();
-    const interval = setInterval(() => loadMessages(true), 5000);
-    return () => clearInterval(interval);
+    
+    const interval = setInterval(() => {
+      if (document.visibilityState === "visible") {
+        loadMessages(true);
+      }
+    }, 15000);
+    
+    // Refresh immediately when returning to the tab
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        loadMessages(true);
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
   }, [loggedIn, loadMessages]);
 
   /* Filter messages */

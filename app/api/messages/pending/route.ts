@@ -1,8 +1,14 @@
 import { getDb } from "@/lib/firebase-admin";
+import {
+  serverState,
+  recordReaderHeartbeat,
+  invalidateHistoryCache,
+} from "@/lib/server-state";
 import { NextResponse } from "next/server";
 
 const ONE_MONTH_MS = 30 * 24 * 60 * 60 * 1000;
 const SEVEN_MINUTES = 7 * 60 * 1000;
+const FALLBACK_CHECK_INTERVAL = 60 * 1000; // التحقق من الداتابيز كل دقيقة كحد أقصى عند الخمول
 
 type Message = {
   id: string;
@@ -13,24 +19,51 @@ type Message = {
   deliveredAt?: number;
 };
 
+// تخزين آخر وقت كتابة للنبض في Firestore لتوفير عمليات الكتابة (مرة كل 5 دقائق فقط بدلاً من كل 3 ثوانٍ)
+let lastFirestoreHeartbeatWrite = 0;
+
 export async function GET() {
   try {
-    const db = getDb();
     const now = Date.now();
 
     // =====================================================
-    // تسجيل نبض القارئ
+    // 1. تسجيل نبض القارئ في الذاكرة (0 قراءات/كتابات)
     // =====================================================
-    
-    // استخدام تحديث غير متزامن وعدم انتظار النتيجة لتسريع الاستجابة للقارئ
-    db.collection("system").doc("main-reader").set({
-      lastSeen: now,
-      updatedAt: new Date().toISOString()
-    }, { merge: true }).catch(console.error);
+    recordReaderHeartbeat();
+
+    const db = getDb();
+
+    // كتابة النبض في Firestore مرة واحدة كل 5 دقائق فقط للحفظ الدائم
+    if (now - lastFirestoreHeartbeatWrite > 5 * 60 * 1000) {
+      lastFirestoreHeartbeatWrite = now;
+      db.collection("system")
+        .doc("main-reader")
+        .set(
+          {
+            lastSeen: now,
+            updatedAt: new Date().toISOString(),
+          },
+          { merge: true }
+        )
+        .catch(console.error);
+    }
 
     // =====================================================
-    // جلب أقدم رسالة pending
+    // 2. التحقق الذكي من الذاكرة قبل استهلاك Firestore
     // =====================================================
+    // إذا لم تكن هناك رسائل جديدة ولم يمر وقت التحقق الاحتياطي، الرد فوراً بدون قراءة قاعدة البيانات
+    const timeSinceLastCheck = now - serverState.lastPendingCheck;
+    if (!serverState.hasPending && timeSinceLastCheck < FALLBACK_CHECK_INTERVAL) {
+      return NextResponse.json({
+        success: true,
+        message: null,
+      });
+    }
+
+    // =====================================================
+    // 3. جلب الرسائل المعلقة من Firestore فقط عند الحاجة
+    // =====================================================
+    serverState.lastPendingCheck = now;
 
     const snapshot = await db
       .collection("messages")
@@ -40,6 +73,7 @@ export async function GET() {
       .get();
 
     if (snapshot.empty) {
+      serverState.hasPending = false;
       return NextResponse.json({
         success: true,
         message: null,
@@ -60,19 +94,21 @@ export async function GET() {
       // تحويل الرسائل التي انتظرت أكثر من 7 دقائق دون سحب إلى فاشلة
       if (data.status === "pending" && age >= SEVEN_MINUTES) {
         await doc.ref.update({ status: "failed" });
+        invalidateHistoryCache();
         continue;
       }
 
       // =====================================================
       // تسليم الرسالة وتحديث حالتها
       // =====================================================
-
       const deliveredAt = now;
 
       await doc.ref.update({
         status: "delivered",
         deliveredAt,
       });
+
+      invalidateHistoryCache();
 
       const message: Message = {
         id: doc.id,
@@ -89,7 +125,8 @@ export async function GET() {
       });
     }
 
-    // لا توجد رسائل صالحة
+    // لا توجد رسائل صالحة متبقية
+    serverState.hasPending = false;
     return NextResponse.json({
       success: true,
       message: null,

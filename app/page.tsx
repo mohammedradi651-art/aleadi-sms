@@ -50,6 +50,7 @@ type ChartDay = {
   delivered: number;
   pending: number;
   failed: number;
+  failedBalance: number;
 };
 
 type HistoryResponse = {
@@ -59,6 +60,7 @@ type HistoryResponse = {
     pending: number;
     delivered: number;
     failed: number;
+    failedBalance: number;
     successRate: number;
   };
   readerLastSeen: number | null;
@@ -505,7 +507,7 @@ export default function Home() {
     dateLabel: new Date(d.date).toLocaleDateString("ar-SA", { weekday: "short", day: "numeric" }),
   }));
 
-  const stats = data?.stats ?? { total: 0, pending: 0, delivered: 0, failed: 0, successRate: 0 };
+  const stats = data?.stats ?? { total: 0, pending: 0, delivered: 0, failed: 0, failedBalance: 0, successRate: 0 };
 
   return (
     <div className="app-container" style={{ maxWidth: "1240px", margin: "0 auto", padding: "28px 20px 80px" }}>
@@ -547,36 +549,9 @@ export default function Home() {
               <h1 style={{ fontSize: "1.35rem", fontWeight: 800, color: "var(--text-main)", letterSpacing: "-0.02em" }}>
                  ALWADI SMS
               </h1>
-              {data && (
-                <div
-                  title={data.readerLastSeen ? `آخر اتصال: ${formatFullTime(data.readerLastSeen)}` : "لم يتصل بعد"}
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: "5px",
-                    padding: "3px 8px",
-                    borderRadius: "var(--radius-full)",
-                    background: (data.readerLastSeen && (Date.now() - data.readerLastSeen <= 10000)) ? "var(--success-light)" : "var(--danger-light)",
-                    color: (data.readerLastSeen && (Date.now() - data.readerLastSeen <= 10000)) ? "var(--success-text)" : "var(--danger-text)",
-                    fontSize: "0.72rem",
-                    fontWeight: 700,
-                  }}
-                >
-                  <span
-                    className={(data.readerLastSeen && (Date.now() - data.readerLastSeen <= 10000)) ? "live-pulse" : ""}
-                    style={{ width: "6px", height: "6px", borderRadius: "50%", background: (data.readerLastSeen && (Date.now() - data.readerLastSeen <= 10000)) ? "var(--success)" : "var(--danger)" }}
-                  />
-                  {(data.readerLastSeen && (Date.now() - data.readerLastSeen <= 10000)) ? "متصل" : "غير متصل"}
-                </div>
-              )}
             </div>
             <p style={{ color: "var(--text-sub)", fontSize: "0.82rem", fontWeight: 500, marginTop: "2px" }}>
-              نظام رسائل التحقق 
-              {data?.readerLastSeen ? (
-                <span style={{ margin: "0 5px", color: "var(--text-muted)" }}>
-                  | آخر اتصال: {formatRelative(data.readerLastSeen)}
-                </span>
-              ) : null}
+              نظام رسائل التحقق (OTP) المباشر
             </p>
           </div>
         </div>
@@ -692,7 +667,7 @@ export default function Home() {
         className="stats-grid"
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(5, 1fr)",
+          gridTemplateColumns: "repeat(6, 1fr)",
           gap: "18px",
           marginBottom: "28px",
         }}
@@ -762,10 +737,26 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Card 5: Failed */}
+        {/* Card 5: Failed Balance */}
         <div className="app-card app-card-interactive stat-card-inner" style={{ padding: "22px" }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "14px" }}>
-            <span style={{ fontSize: "0.88rem", fontWeight: 600, color: "var(--text-sub)" }}>فاشلة</span>
+            <span style={{ fontSize: "0.88rem", fontWeight: 600, color: "var(--text-sub)" }}>فشلت للرصيد</span>
+            <div style={{ width: "40px", height: "40px", borderRadius: "12px", background: "rgba(239, 68, 68, 0.15)", color: "var(--danger-text)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <X size={20} />
+            </div>
+          </div>
+          <div className="num-latin stat-val" style={{ fontSize: "1.9rem", fontWeight: 800, color: "var(--danger-text)", lineHeight: 1 }}>
+            {loading ? "?" : stats.failedBalance}
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: "4px", color: "var(--text-muted)", fontSize: "0.78rem", marginTop: "8px", fontWeight: 500 }}>
+            <span>فشلت بسبب الرصيد</span>
+          </div>
+        </div>
+
+        {/* Card 6: Failed */}
+        <div className="app-card app-card-interactive stat-card-inner" style={{ padding: "22px" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "14px" }}>
+            <span style={{ fontSize: "0.88rem", fontWeight: 600, color: "var(--text-sub)" }}>فاشلة (عام)</span>
             <div style={{ width: "40px", height: "40px", borderRadius: "12px", background: "var(--danger-light)", color: "var(--danger-text)", display: "flex", alignItems: "center", justifyContent: "center" }}>
               <X size={20} />
             </div>

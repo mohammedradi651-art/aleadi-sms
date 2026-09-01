@@ -92,14 +92,15 @@ export async function GET(request: Request) {
     const pending = messages.filter((m) => m.status === "pending").length;
     const delivered = messages.filter((m) => m.status === "delivered").length;
     const failed = messages.filter((m) => m.status === "failed").length;
+    const failedBalance = messages.filter((m) => m.status === "failed_balance").length;
 
     // إحصائيات يومية للرسم البياني (آخر 7 أيام)
-    const dailyStats: Record<string, { total: number; delivered: number; pending: number; failed: number }> = {};
+    const dailyStats: Record<string, { total: number; delivered: number; pending: number; failed: number; failedBalance: number }> = {};
 
     for (let i = 6; i >= 0; i--) {
       const date = new Date(now - i * 24 * 60 * 60 * 1000);
       const dateKey = date.toISOString().split("T")[0];
-      dailyStats[dateKey] = { total: 0, delivered: 0, pending: 0, failed: 0 };
+      dailyStats[dateKey] = { total: 0, delivered: 0, pending: 0, failed: 0, failedBalance: 0 };
     }
 
     messages.forEach((msg) => {
@@ -109,6 +110,7 @@ export async function GET(request: Request) {
         if (msg.status === "pending") dailyStats[dateKey].pending++;
         if (msg.status === "delivered") dailyStats[dateKey].delivered++;
         if (msg.status === "failed") dailyStats[dateKey].failed++;
+        if (msg.status === "failed_balance") dailyStats[dateKey].failedBalance++;
       }
     });
 
@@ -124,6 +126,7 @@ export async function GET(request: Request) {
         pending,
         delivered,
         failed,
+        failedBalance,
         successRate:
           messages.length > 0
             ? Math.round((delivered / messages.length) * 100)

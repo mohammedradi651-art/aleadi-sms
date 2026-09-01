@@ -1,9 +1,4 @@
 import { getDb } from "@/lib/firebase-admin";
-import {
-  serverState,
-  recordReaderHeartbeat,
-  invalidateHistoryCache,
-} from "@/lib/server-state";
 import { NextResponse } from "next/server";
 
 const ONE_MONTH_MS = 30 * 24 * 60 * 60 * 1000;

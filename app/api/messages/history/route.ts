@@ -134,12 +134,6 @@ export async function GET(request: Request) {
       messages,
     };
 
-    // حفظ في الكاش
-    serverState.historyCache = {
-      data: responsePayload,
-      timestamp: now,
-    };
-
     return NextResponse.json(responsePayload);
   } catch (error) {
     console.error("HISTORY ERROR:", error);

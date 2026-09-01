@@ -1,14 +1,18 @@
-// Global in-memory state for reducing Firestore reads/writes
+// Global in-memory state for managing SSE Connections
 // Uses globalThis to ensure singleton state across hot-reloads and API routes
 
+export type MessageType = {
+  id: string;
+  phone: string;
+  message: string;
+  createdAt: number;
+  status: string;
+  deliveredAt?: number;
+};
+
 interface ServerState {
-  hasPending: boolean;
-  lastPendingCheck: number;
-  readerLastSeen: number | null;
-  historyCache: {
-    data: any;
-    timestamp: number;
-  } | null;
+  readerStreams: Set<ReadableStreamDefaultController<any>>;
+  dashboardStreams: Set<ReadableStreamDefaultController<any>>;
   lastCleanupTime: number;
 }
 
@@ -17,10 +21,8 @@ const globalForState = globalThis as unknown as {
 };
 
 export const serverState: ServerState = globalForState.__smsServerState || {
-  hasPending: true, // Start with true to check DB on startup
-  lastPendingCheck: 0,
-  readerLastSeen: null,
-  historyCache: null,
+  readerStreams: new Set(),
+  dashboardStreams: new Set(),
   lastCleanupTime: 0,
 };
 
@@ -28,23 +30,38 @@ if (process.env.NODE_ENV !== "production") {
   globalForState.__smsServerState = serverState;
 }
 
-// Mark that a new message was added (invalidates cache and signals pending messages)
-export function notifyNewMessage() {
-  serverState.hasPending = true;
-  serverState.historyCache = null; // Invalidate history cache so dashboard shows it immediately
+// Check if reader is connected
+export function isReaderConnected(): boolean {
+  return serverState.readerStreams.size > 0;
 }
 
-// Update reader heartbeat in memory
-export function recordReaderHeartbeat() {
-  serverState.readerLastSeen = Date.now();
+// Push message to all active readers
+export function pushMessageToReaders(message: MessageType) {
+  const data = `data: ${JSON.stringify(message)}\n\n`;
+  const encoded = new TextEncoder().encode(data);
+  serverState.readerStreams.forEach((controller) => {
+    try {
+      controller.enqueue(encoded);
+    } catch (e) {
+      console.error("Error sending to reader stream", e);
+    }
+  });
 }
 
-// Get reader last seen timestamp
-export function getReaderLastSeen(): number | null {
-  return serverState.readerLastSeen;
+// Push updates to dashboards (status change, new message, etc)
+export function pushUpdateToDashboards(payload: any) {
+  const data = `data: ${JSON.stringify(payload)}\n\n`;
+  const encoded = new TextEncoder().encode(data);
+  serverState.dashboardStreams.forEach((controller) => {
+    try {
+      controller.enqueue(encoded);
+    } catch (e) {
+      console.error("Error sending to dashboard stream", e);
+    }
+  });
 }
 
-// Invalidate history cache
-export function invalidateHistoryCache() {
-  serverState.historyCache = null;
+// Notify dashboards about reader connection status change
+export function notifyDashboardsReaderStatus() {
+  pushUpdateToDashboards({ type: "READER_STATUS", connected: isReaderConnected() });
 }

@@ -1,5 +1,5 @@
 import { getDb } from "@/lib/firebase-admin";
-import { notifyNewMessage } from "@/lib/server-state";
+import { isReaderConnected, pushMessageToReaders, pushUpdateToDashboards, MessageType } from "@/lib/server-state";
 import { NextResponse } from "next/server";
 
 // مفتاح API المسموح للمرسل
@@ -45,32 +45,42 @@ export async function POST(request: Request) {
     }
 
     // =====================================================
-    // إنشاء الرسالة في Firestore
+    // إنشاء الرسالة في Firestore ودفعها عبر SSE إن أمكن
     // =====================================================
 
     const db = getDb();
     const now = Date.now();
     const expiresAt = now + ONE_MONTH_MS;
 
+    const readerConnected = isReaderConnected();
+    const status = readerConnected ? "delivered" : "pending";
+    const deliveredAt = readerConnected ? now : null;
+
     const docRef = await db.collection("messages").add({
       phone: String(phone),
       message: String(message),
       createdAt: now,
       expiresAt,
-      status: "pending",
-      deliveredAt: null,
+      status,
+      deliveredAt,
     });
 
-    const data = {
+    const data: MessageType = {
       id: docRef.id,
       phone: String(phone),
       message: String(message),
       createdAt: now,
-      status: "pending",
+      status,
+      deliveredAt: deliveredAt ?? undefined,
     };
 
-    // إشعار الذاكرة المؤقتة بوجود رسالة جديدة
-    notifyNewMessage();
+    // دفع مباشر للقارئ عبر SSE
+    if (readerConnected) {
+      pushMessageToReaders({ ...data, type: "NEW_MESSAGE" } as any);
+    }
+    
+    // إشعار اللوحة بالرسالة الجديدة
+    pushUpdateToDashboards({ type: "NEW_MESSAGE", message: data });
 
     // =====================================================
     // نجاح

@@ -1,5 +1,5 @@
 import { getDb } from "@/lib/firebase-admin";
-import { serverState, getReaderLastSeen } from "@/lib/server-state";
+import { serverState, isReaderConnected } from "@/lib/server-state";
 import { NextResponse } from "next/server";
 
 const ONE_MONTH_MS = 30 * 24 * 60 * 60 * 1000;
@@ -15,25 +15,16 @@ type Message = {
   deliveredAt?: number;
 };
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const now = Date.now();
-    let readerLastSeen = getReaderLastSeen();
-
-    // =====================================================
-    // 1. التحقق من الكاش (إذا كان صالحاً نرجعه فوراً مع تحديث حالة القارئ)
-    // =====================================================
-    if (
-      serverState.historyCache &&
-      now - serverState.historyCache.timestamp < HISTORY_CACHE_TTL
-    ) {
-      return NextResponse.json({
-        ...serverState.historyCache.data,
-        readerLastSeen,
-      });
-    }
-
     const db = getDb();
+    
+    // =====================================================
+    // 1. جلب حالة القارئ من الذاكرة الحية (0 قراءات)
+    // =====================================================
+    const readerLastSeen = isReaderConnected() ? Date.now() : null;
+
     const oneMonthAgo = now - ONE_MONTH_MS;
 
     // =====================================================
@@ -56,21 +47,7 @@ export async function GET() {
     }
 
     // =====================================================
-    // 3. جلب حالة القارئ الدائمة إذا لم تكن في الذاكرة
-    // =====================================================
-    if (!readerLastSeen) {
-      try {
-        const readerDoc = await db.collection("system").doc("main-reader").get();
-        if (readerDoc.exists) {
-          readerLastSeen = readerDoc.data()?.lastSeen ?? null;
-        }
-      } catch (e) {
-        console.error("Reader doc get error:", e);
-      }
-    }
-
-    // =====================================================
-    // جلب آخر 100 رسالة للعرض
+    // 3. جلب آخر 100 رسالة للعرض (يكلف قراءات فقط عند وجود تحديث جديد)
     // =====================================================
 
     const snapshot = await db

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import {
   AreaChart,
   Area,
@@ -62,6 +62,7 @@ type HistoryResponse = {
     successRate: number;
   };
   readerLastSeen: number | null;
+  serverLastUpdated?: number;
   chartData: ChartDay[];
   messages: Message[];
 };
@@ -290,10 +291,13 @@ export default function Home() {
     if (!silent) setLoading(true);
     else setRefreshing(true);
     try {
-      const res = await fetch("/api/messages/history", { cache: "no-store" });
+      const res = await fetch(`/api/messages/history`, { cache: "no-store" });
       if (res.ok) {
-        const result: HistoryResponse = await res.json();
-        if (result.success) setData(result);
+        const result = await res.json();
+        
+        if (result.success) {
+          setData(result);
+        }
       }
     } catch (e) {
       console.error(e);
@@ -303,18 +307,38 @@ export default function Home() {
     }
   }, []);
 
-  /* Auto-refresh: 15 seconds, and only when tab is active */
+  /* SSE Connection for Real-Time Updates */
   useEffect(() => {
     if (!loggedIn) return;
-    loadMessages();
+    loadMessages(); // Initial load
     
-    const interval = setInterval(() => {
-      if (document.visibilityState === "visible") {
-        loadMessages(true);
+    // Connect to dashboard SSE stream
+    const eventSource = new EventSource("/api/stream/dashboard");
+    
+    eventSource.onmessage = (event) => {
+      try {
+        const payload = JSON.parse(event.data);
+        if (payload.type === "READER_STATUS") {
+          setData((prev) => {
+            if (!prev) return prev;
+            return { ...prev, readerLastSeen: payload.connected ? Date.now() : null };
+          });
+        } else if (payload.type === "NEW_MESSAGE" && payload.message) {
+          // Add the new message to the list or reload if stats change significantly
+          loadMessages(true);
+        }
+      } catch (e) {
+        console.error("SSE parse error", e);
       }
-    }, 15000);
+    };
+
+    eventSource.onerror = (e) => {
+      console.error("SSE Connection Error", e);
+      // EventSource auto-reconnects, but we can do a fallback fetch just in case
+      setTimeout(() => loadMessages(true), 5000);
+    };
     
-    // Refresh immediately when returning to the tab
+    // Refresh immediately when returning to the tab in case stream paused
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible") {
         loadMessages(true);
@@ -323,7 +347,7 @@ export default function Home() {
     document.addEventListener("visibilitychange", handleVisibilityChange);
     
     return () => {
-      clearInterval(interval);
+      eventSource.close();
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, [loggedIn, loadMessages]);

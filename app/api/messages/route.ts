@@ -53,8 +53,8 @@ export async function POST(request: Request) {
     const expiresAt = now + ONE_MONTH_MS;
 
     const readerConnected = isReaderConnected();
-    const status = readerConnected ? "delivered" : "pending";
-    const deliveredAt = readerConnected ? now : null;
+    const status = "pending";
+    const deliveredAt = null;
 
     const docRef = await db.collection("messages").add({
       phone: String(phone),

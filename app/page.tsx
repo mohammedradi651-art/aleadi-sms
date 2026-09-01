@@ -324,8 +324,15 @@ export default function Home() {
             return { ...prev, readerLastSeen: payload.connected ? Date.now() : null };
           });
         } else if (payload.type === "NEW_MESSAGE" && payload.message) {
-          // Add the new message to the list or reload if stats change significantly
           loadMessages(true);
+        } else if (payload.type === "MESSAGE_UPDATED" && payload.message) {
+          setData((prev) => {
+            if (!prev) return prev;
+            const msgs = prev.messages.map((m) =>
+              m.id === payload.message.id ? { ...m, status: payload.message.status, deliveredAt: payload.message.deliveredAt } : m
+            );
+            return { ...prev, messages: msgs };
+          });
         }
       } catch (e) {
         console.error("SSE parse error", e);

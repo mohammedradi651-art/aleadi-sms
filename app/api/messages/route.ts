@@ -1,5 +1,5 @@
 import { getDb } from "@/lib/firebase-admin";
-import { isReaderConnected, pushMessageToReaders, pushUpdateToDashboards, MessageType } from "@/lib/server-state";
+import { isReaderConnected, pushMessageToReaders, pushUpdateToDashboards, MessageType, isMaintenanceMode } from "@/lib/server-state";
 import { NextResponse } from "next/server";
 
 // مفتاح API المسموح للمرسل
@@ -11,8 +11,18 @@ const ONE_MONTH_MS = 30 * 24 * 60 * 60 * 1000;
 export async function POST(request: Request) {
   try {
     // =====================================================
-    // حماية الإرسال فقط
+    // حماية الإرسال وصيانة النظام
     // =====================================================
+
+    if (isMaintenanceMode()) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "نعتذر، التطبيق حالياً تحت الصيانة وسيعود للعمل قريباً. نشكركم على صبركم وتفهمكم",
+        },
+        { status: 503 },
+      );
+    }
 
     const apiKey = request.headers.get("x-api-key");
 

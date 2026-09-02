@@ -281,6 +281,8 @@ export default function Home() {
   const [testPhone, setTestPhone] = useState("771176611");
   const [testMsg, setTestMsg] = useState("رمز التحقق الخاص بك هو: 8492 — صالح لـ 5 دقائق");
   const [testSending, setTestSending] = useState(false);
+  const [maintenanceMode, setMaintenanceMode] = useState(false);
+  const [togglingMaintenance, setTogglingMaintenance] = useState(false);
 
   /* Auth check */
   useEffect(() => {
@@ -300,6 +302,11 @@ export default function Home() {
         if (result.success) {
           setData(result);
         }
+      }
+      const maintRes = await fetch(`/api/maintenance`);
+      if (maintRes.ok) {
+        const maintResult = await maintRes.json();
+        setMaintenanceMode(maintResult.maintenanceMode);
       }
     } catch (e) {
       console.error(e);
@@ -335,6 +342,8 @@ export default function Home() {
             );
             return { ...prev, messages: msgs };
           });
+        } else if (payload.type === "MAINTENANCE_STATUS") {
+          setMaintenanceMode(payload.maintenanceMode);
         }
       } catch (e) {
         console.error("SSE parse error", e);
@@ -417,11 +426,41 @@ export default function Home() {
       if (res.ok) {
         setTestModalOpen(false);
         loadMessages(true);
+      } else {
+        const errorData = await res.json();
+        if (errorData.error) {
+          alert("خطأ: " + errorData.error);
+        }
       }
     } catch (e) {
       console.error(e);
     } finally {
       setTestSending(false);
+    }
+  }
+
+  /* Toggle Maintenance */
+  async function toggleMaintenance() {
+    setTogglingMaintenance(true);
+    try {
+      const newMode = !maintenanceMode;
+      const res = await fetch("/api/maintenance", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ mode: newMode }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          setMaintenanceMode(data.maintenanceMode);
+        }
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setTogglingMaintenance(false);
     }
   }
 
@@ -558,6 +597,25 @@ export default function Home() {
 
         {/* Quick action buttons */}
         <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          <button
+            onClick={toggleMaintenance}
+            disabled={togglingMaintenance}
+            className="btn-fintech-primary"
+            style={{ 
+              padding: "10px 16px", 
+              fontSize: "0.88rem", 
+              background: maintenanceMode ? "var(--danger-main)" : undefined,
+              borderColor: maintenanceMode ? "var(--danger-main)" : undefined,
+            }}
+          >
+            {togglingMaintenance ? (
+              <RefreshCw size={16} className="spin-anim" />
+            ) : (
+              <ShieldCheck size={16} />
+            )}
+            <span className="hide-on-mobile">{maintenanceMode ? "إيقاف الصيانة" : "تفعيل الصيانة"}</span>
+          </button>
+
           <button
             onClick={() => setTestModalOpen(true)}
             className="btn-fintech-primary"

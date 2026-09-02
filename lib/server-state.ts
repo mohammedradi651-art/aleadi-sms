@@ -18,6 +18,7 @@ interface ServerState {
 
 const globalForState = globalThis as unknown as {
   __smsServerState?: ServerState;
+  __smsMaintenanceMode?: boolean;
 };
 
 export const serverState: ServerState = globalForState.__smsServerState || {
@@ -25,6 +26,15 @@ export const serverState: ServerState = globalForState.__smsServerState || {
   dashboardStreams: new Set(),
   lastCleanupTime: 0,
 };
+
+export function isMaintenanceMode(): boolean {
+  return globalForState.__smsMaintenanceMode ?? false;
+}
+
+export function setMaintenanceMode(mode: boolean) {
+  globalForState.__smsMaintenanceMode = mode;
+  pushUpdateToDashboards({ type: "MAINTENANCE_STATUS", maintenanceMode: mode });
+}
 
 if (process.env.NODE_ENV !== "production") {
   globalForState.__smsServerState = serverState;

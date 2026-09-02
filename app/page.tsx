@@ -303,7 +303,7 @@ export default function Home() {
           setData(result);
         }
       }
-      const maintRes = await fetch(`/api/maintenance`);
+      const maintRes = await fetch(`/api/maintenance`, { cache: "no-store" });
       if (maintRes.ok) {
         const maintResult = await maintRes.json();
         setMaintenanceMode(maintResult.maintenanceMode);
@@ -606,6 +606,7 @@ export default function Home() {
               fontSize: "0.88rem", 
               background: maintenanceMode ? "var(--danger-main)" : undefined,
               borderColor: maintenanceMode ? "var(--danger-main)" : undefined,
+              color: maintenanceMode ? "#ffffff" : undefined,
             }}
           >
             {togglingMaintenance ? (
@@ -613,7 +614,7 @@ export default function Home() {
             ) : (
               <ShieldCheck size={16} />
             )}
-            <span className="hide-on-mobile">{maintenanceMode ? "إيقاف الصيانة" : "تفعيل الصيانة"}</span>
+            <span className="hide-on-mobile">{maintenanceMode ? "مفعل الصيانة" : "تفعيل الصيانة"}</span>
           </button>
 
           <button

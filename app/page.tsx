@@ -604,8 +604,8 @@ export default function Home() {
             style={{ 
               padding: "10px 16px", 
               fontSize: "0.88rem", 
-              background: maintenanceMode ? "var(--danger-main)" : undefined,
-              borderColor: maintenanceMode ? "var(--danger-main)" : undefined,
+              background: maintenanceMode ? "var(--danger)" : undefined,
+              borderColor: maintenanceMode ? "var(--danger)" : undefined,
               color: maintenanceMode ? "#ffffff" : undefined,
             }}
           >

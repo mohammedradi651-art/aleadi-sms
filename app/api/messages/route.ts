@@ -12,7 +12,7 @@ export async function POST(request: Request) {
   try {
     // =====================================================
     // حماية الإرسال وصيانة النظام
-    if (isMaintenanceMode()) {
+    if (await isMaintenanceMode()) {
       return NextResponse.json(
         {
           success: false,

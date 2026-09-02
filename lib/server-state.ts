@@ -27,13 +27,29 @@ export const serverState: ServerState = globalForState.__smsServerState || {
   lastCleanupTime: 0,
 };
 
-export function isMaintenanceMode(): boolean {
-  return globalForState.__smsMaintenanceMode ?? false;
+import { getDb } from "./firebase-admin";
+
+export async function isMaintenanceMode(): Promise<boolean> {
+  try {
+    const db = getDb();
+    const doc = await db.collection("settings").doc("app").get();
+    if (doc.exists) {
+      return doc.data()?.maintenanceMode ?? false;
+    }
+  } catch (e) {
+    console.error("Error reading maintenance mode", e);
+  }
+  return false;
 }
 
-export function setMaintenanceMode(mode: boolean) {
-  globalForState.__smsMaintenanceMode = mode;
-  pushUpdateToDashboards({ type: "MAINTENANCE_STATUS", maintenanceMode: mode });
+export async function setMaintenanceMode(mode: boolean) {
+  try {
+    const db = getDb();
+    await db.collection("settings").doc("app").set({ maintenanceMode: mode }, { merge: true });
+    pushUpdateToDashboards({ type: "MAINTENANCE_STATUS", maintenanceMode: mode });
+  } catch (e) {
+    console.error("Error setting maintenance mode", e);
+  }
 }
 
 if (process.env.NODE_ENV !== "production") {

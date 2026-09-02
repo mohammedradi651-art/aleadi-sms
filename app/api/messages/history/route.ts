@@ -54,7 +54,7 @@ export async function GET(request: Request) {
       .collection("messages")
       .where("createdAt", ">=", oneMonthAgo)
       .orderBy("createdAt", "desc")
-      .limit(100)
+      .limit(10000)
       .get();
 
     const updateBatch = db.batch();

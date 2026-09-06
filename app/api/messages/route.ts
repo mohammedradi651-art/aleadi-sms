@@ -8,6 +8,55 @@ const API_KEY = "ALWADI-OTP-771176611";
 // مدة الحفظ: شهر كامل
 const ONE_MONTH_MS = 30 * 24 * 60 * 60 * 1000;
 
+const REPLY_TEMPLATES = [
+  (otp: string) => `منظومة الوادي: ${otp}`,
+  (otp: string) => `ALWADI: ${otp}`,
+  (otp: string) => `Al-Wadi System: ${otp}`,
+];
+
+function toEnglishDigits(value: string): string {
+  return value.replace(/[٠-٩]/g, (digit) => String(digit.charCodeAt(0) - 1632));
+}
+
+function extractOtp(text: string): string | null {
+  const normalizedText = toEnglishDigits(String(text));
+  const keywordMatch = normalizedText.match(
+    /(?:رمز|كود|code|otp)[^\d]{0,40}(\d{4,8})/i,
+  );
+
+  if (keywordMatch) {
+    return keywordMatch[1];
+  }
+
+  const fallbackMatch = normalizedText.match(/\b\d{4,8}\b/);
+  return fallbackMatch?.[0] ?? null;
+}
+
+async function getNextReply(otp: string) {
+  const db = getDb();
+  const rotationRef = db.collection("settings").doc("otpReplyRotation");
+
+  return db.runTransaction(async (transaction) => {
+    const snapshot = await transaction.get(rotationRef);
+    const currentIndex = Number(snapshot.data()?.nextTemplateIndex ?? 0);
+    const templateIndex = currentIndex % REPLY_TEMPLATES.length;
+
+    transaction.set(
+      rotationRef,
+      {
+        nextTemplateIndex: (templateIndex + 1) % REPLY_TEMPLATES.length,
+        updatedAt: Date.now(),
+      },
+      { merge: true },
+    );
+
+    return {
+      message: REPLY_TEMPLATES[templateIndex](otp),
+      templateIndex,
+    };
+  });
+}
+
 export async function POST(request: Request) {
   try {
     // =====================================================
@@ -52,9 +101,22 @@ export async function POST(request: Request) {
       );
     }
 
-    // =====================================================
-    // إنشاء الرسالة في Firestore ودفعها عبر SSE إن أمكن
-    // =====================================================
+    const originalMessage = String(message);
+    const otp = extractOtp(originalMessage);
+
+    if (!otp) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "لم يتم العثور على رمز تحقق من 4 إلى 8 أرقام في الرسالة",
+        },
+        { status: 400 },
+      );
+    }
+
+    const reply = await getNextReply(otp);
+
+    // Store and forward only the short rotated reply. Keep the original for auditing.
 
     const db = getDb();
     const now = Date.now();
@@ -66,7 +128,10 @@ export async function POST(request: Request) {
 
     const docRef = await db.collection("messages").add({
       phone: String(phone),
-      message: String(message),
+      message: reply.message,
+      originalMessage,
+      otp,
+      templateIndex: reply.templateIndex,
       createdAt: now,
       expiresAt,
       status,
@@ -76,7 +141,7 @@ export async function POST(request: Request) {
     const data: MessageType = {
       id: docRef.id,
       phone: String(phone),
-      message: String(message),
+      message: reply.message,
       createdAt: now,
       status,
       deliveredAt: deliveredAt ?? undefined,
@@ -84,7 +149,7 @@ export async function POST(request: Request) {
 
     // دفع مباشر للقارئ عبر SSE
     if (readerConnected) {
-      pushMessageToReaders({ ...data, type: "NEW_MESSAGE" } as any);
+      pushMessageToReaders({ ...data, type: "NEW_MESSAGE" });
     }
     
     // إشعار اللوحة بالرسالة الجديدة

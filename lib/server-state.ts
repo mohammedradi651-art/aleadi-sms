@@ -8,6 +8,7 @@ export type MessageType = {
   createdAt: number;
   status: string;
   deliveredAt?: number;
+  type?: "NEW_MESSAGE";
 };
 
 interface ServerState {

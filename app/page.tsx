@@ -333,7 +333,15 @@ export default function Home() {
             return { ...prev, readerLastSeen: payload.connected ? Date.now() : null };
           });
         } else if (payload.type === "NEW_MESSAGE" && payload.message) {
-          loadMessages(true);
+          setData((prev) => {
+            if (!prev) return prev;
+            const message = payload.message as Message;
+            if (prev.messages.some((item) => item.id === message.id)) return prev;
+            return {
+              ...prev,
+              messages: [message, ...prev.messages].slice(0, 100),
+            };
+          });
         } else if (payload.type === "MESSAGE_UPDATED" && payload.message) {
           setData((prev) => {
             if (!prev) return prev;
@@ -352,21 +360,10 @@ export default function Home() {
 
     eventSource.onerror = (e) => {
       console.error("SSE Connection Error", e);
-      // EventSource auto-reconnects, but we can do a fallback fetch just in case
-      setTimeout(() => loadMessages(true), 5000);
     };
-    
-    // Refresh immediately when returning to the tab in case stream paused
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === "visible") {
-        loadMessages(true);
-      }
-    };
-    document.addEventListener("visibilitychange", handleVisibilityChange);
     
     return () => {
       eventSource.close();
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, [loggedIn, loadMessages]);
 

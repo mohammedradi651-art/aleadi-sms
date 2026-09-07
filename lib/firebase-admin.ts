@@ -1,10 +1,23 @@
 import { initializeApp, getApps, cert } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 
 // تهيئة Firebase Admin SDK مرة واحدة فقط
 function getFirebaseAdmin() {
   if (getApps().length > 0) {
     return getApps()[0];
+  }
+
+  const serviceAccountPath = process.env.FIREBASE_SERVICE_ACCOUNT_PATH;
+
+  if (serviceAccountPath) {
+    const absolutePath = path.resolve(process.cwd(), serviceAccountPath);
+    const serviceAccount = JSON.parse(readFileSync(absolutePath, "utf8"));
+
+    return initializeApp({
+      credential: cert(serviceAccount),
+    });
   }
 
   const projectId = process.env.FIREBASE_PROJECT_ID;

@@ -47,14 +47,14 @@ export async function GET(request: Request) {
     }
 
     // =====================================================
-    // 3. جلب آخر 100 رسالة للعرض (يكلف قراءات فقط عند وجود تحديث جديد)
+    // 3. جلب آخر 100 رسالة فقط للعرض
     // =====================================================
 
     const snapshot = await db
       .collection("messages")
       .where("createdAt", ">=", oneMonthAgo)
       .orderBy("createdAt", "desc")
-      .limit(10000)
+      .limit(100)
       .get();
 
     const updateBatch = db.batch();
